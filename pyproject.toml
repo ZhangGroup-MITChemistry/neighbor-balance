@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neighbor_balance"
+version = "0.1.0"
+description = "Neighbor balancing of micro-C data"
+authors = [{ name = "Joseph Paggi", email = "joepaggi@mit.com" }]
+readme = "README.md"
+license = { file = "LICENSE" }
+dependencies = [
+    "numpy",
+    "pandas",
+    "click",
+    "cooler",
+    "intervaltree",
+    "matplotlib",
+    "cooler",
+    "scipy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+neighbor-balance = "neighbor_balance.cli:main"
+pairs_to_bed = "neighbor_balance.pairs_to_bed:main"
