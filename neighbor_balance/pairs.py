@@ -233,6 +233,8 @@ def all_pairs_plots(pairs_fname, protected_over_2, nrows):
     counts_shifted = {k: np.zeros(high) for k in ['inward', 'outward', 'tandem_entry', 'tandem_exit']}
     for df in PairsFile.as_pandas(pairs_fname, nrows=nrows, chunksize=1_000_000):
         df = df.loc[df.pair_type == 'UU']
+        if not len(df):
+            continue
         intra_chrom = df.chrom1 == df.chrom2
         print(f'frac intrachromosome  {sum(intra_chrom) / len(intra_chrom)}')
         df = df.loc[intra_chrom]

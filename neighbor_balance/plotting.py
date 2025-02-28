@@ -1,9 +1,26 @@
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, Normalize
 from matplotlib.ticker import EngFormatter
 from matplotlib.gridspec import GridSpec
-from .ice import get_marginal, get_distance_average
 import numpy as np
+import itertools
+from .ice import get_marginal, get_distance_average
+import logging
+import matplotlib as mpl
+# import cooltools.lib.plotting
+
+
+def apply_matplotlib_style():
+    logging.basicConfig(level=logging.CRITICAL)
+    logging.getLogger("fontTools.subset").setLevel(logging.CRITICAL)
+    mpl.rcParams['pdf.fonttype'] = 42
+    mpl.rcParams['ps.fonttype'] = 42
+    mpl.rcParams['ytick.labelsize'] = 8
+    mpl.rcParams['xtick.labelsize'] = 8
+    mpl.rcParams['legend.fontsize'] = 8
+    mpl.rcParams['figure.dpi'] = 150
+    mpl.rcParams['savefig.transparent'] = True
+    mpl.rcParams['savefig.bbox'] = 'tight'
 
 
 def parse_region(region: str) -> tuple[str, int, int]:
@@ -40,32 +57,66 @@ def format_ticks(ax, x=True, y=True, rotate=True):
         ax.tick_params(axis='x', rotation=20)
 
 
-def plot_pairwise(x: np.ndarray, region: str, ax=None, colorbar=True, vmax=None, vmin=None,
-                  log_norm=False, cmap='hot_r', extend='neither'):
+def _pcolormesh_45deg(ax, matrix_c, start=0, resolution=1, *args, **kwargs):
+    # From cooltools documentation.
+    start_pos_vector = [start+resolution*i for i in range(len(matrix_c)+1)]
+    n = matrix_c.shape[0]
+    t = np.array([[1, 0.5], [-1, 0.5]])
+    matrix_a = np.dot(np.array([(i[1], i[0])
+                                for i in itertools.product(start_pos_vector[::-1],
+                                                           start_pos_vector)]), t)
+    x = matrix_a[:, 1].reshape(n + 1, n + 1)
+    y = matrix_a[:, 0].reshape(n + 1, n + 1)
+    im = ax.pcolormesh(x, y, np.flipud(matrix_c), *args, **kwargs)
+    im.set_rasterized(True)
+    return im
+
+
+def plot_pairwise_horizontal(contact_map: np.ndarray, region: str, ax=None, colorbar=True,
+                             vmax=None, vmin=None, log_norm=True, cmap='fall', extend='neither', depth=None):
     chrom, start, end = parse_region(region)
-    extents = (start, end, end, start)
+    resolution = (end - start) // contact_map.shape[0]
+    if depth is None:
+        depth = end - start
 
     if ax is None:
         f, ax = plt.subplots()
 
     if log_norm:
         norm = LogNorm(vmax=vmax, vmin=vmin)
-        im = ax.matshow(
-            x,
-            cmap=cmap,
-            norm=norm,
-            extent=extents,
-            rasterized=True,
-        )
     else:
-        im = ax.matshow(
-            x,
-            cmap=cmap,
-            vmax=vmax,
-            vmin=vmin,
-            extent=extents,
-            rasterized=True,
-        )
+        norm = Normalize(vmax=vmax, vmin=vmin)
+
+    im = _pcolormesh_45deg(ax, contact_map, start=start, resolution=resolution, cmap=cmap, norm=norm)
+
+    if colorbar:
+        plt.colorbar(im, ax=ax, extend=extend)
+    format_ticks(ax)
+    ax.set_aspect(0.5)
+    ax.set_ylim(0, depth)
+    return im
+
+
+def plot_pairwise(x: np.ndarray, region: str, ax=None, colorbar=True, vmax=None, vmin=None,
+                  log_norm=False, cmap='hot_r', extend='neither'):
+    chrom, start, end = parse_region(region)
+
+    if ax is None:
+        f, ax = plt.subplots()
+
+    if log_norm:
+        norm = LogNorm(vmax=vmax, vmin=vmin)
+    else:
+        norm = Normalize(vmax=vmax, vmin=vmin)
+
+    im = ax.matshow(
+        x,
+        cmap=cmap,
+        norm=norm,
+        extent=(start, end, end, start),
+        rasterized=True,
+    )
+
     if colorbar:
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, extend=extend)
     format_ticks(ax)
