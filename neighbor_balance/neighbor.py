@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 import cooler
-import math
 import logging
 
 
@@ -119,7 +118,6 @@ def normalize_contact_map_neighbor(contact_map, bw=0, max_prob=0.95, neighbor_pr
     eps: float
         The minimum value for the neighbor factors as a fraction of the mean neighbor factor
          This is used to prevent pathological behavior when the neighbor factors are very small.
-         
 
     Returns
     -------
@@ -127,7 +125,7 @@ def normalize_contact_map_neighbor(contact_map, bw=0, max_prob=0.95, neighbor_pr
         The normalized contact map.
     """
     for i in range(max_iter):
-        neighbor_factors = get_neighbor_factors(contact_map, eps=eps, average=average)
+        neighbor_factors = get_neighbor_factors(np.diagonal(contact_map, 1).copy(), eps=eps, average=average)
         if bw > 0:
             neighbor_factors = gaussian_filter1d(neighbor_factors, bw, mode='reflect')
         norm = np.sqrt(neighbor_factors.reshape(1, -1) * neighbor_factors.reshape(-1, 1))
@@ -160,19 +158,24 @@ def get_diagonal_for_chrom(clr, chrom, batch_size=1_000_000):
         Array with the average of the neighbors for each bin in the chromosome.
     """
     assert batch_size <= 1_000_000, 'batch size must be less than 1 Mb.'
+    batch_size = (batch_size // clr.binsize) * clr.binsize
 
-    start, end = 0, clr.chromsizes[chrom]
-    diagonal = np.zeros(end // clr.binsize - 1)
-    for s in range(0, end, batch_size):
+    start, end = 0, clr.chromsizes[chrom] - 1
+    diagonal = np.zeros(end // clr.binsize)
+    for i, s in enumerate(range(0, end, batch_size)):
         s_i = s // clr.binsize
 
-        e = min(end, s + batch_size + clr.binsize)  # Add res to get overlap between batches.
-        e_i = math.ceil(e / clr.binsize) - 1
+        if end > s + batch_size + clr.binsize:
+            e = s + batch_size + clr.binsize  # Add binsize to get overlap between batches.
+            e_i = e // clr.binsize - 1
+        else:
+            e = end
+            e_i = e // clr.binsize
 
-        if s and s % 10_000_000 == 0:
+        if not i % 10:
             logging.info(f'Getting neighbors for {chrom}:{s}')
 
-        cmap = clr.matrix(balance='weight').fetch(f'{chrom}:{s}-{e}')
+        cmap = clr.matrix(balance='weight').fetch(f'{chrom}:{s+1}-{e}')  # Region coordinates are inclusive.
         diagonal[s_i:e_i] = np.diagonal(cmap, 1)
     return diagonal
 
@@ -183,7 +186,7 @@ def add_neighbor_factors_to_cooler(cool_fname, neighbor_res=200, batch_size=1_00
     for chrom in clr.chromsizes.index:
         diagonal = get_diagonal_for_chrom(clr, chrom, batch_size=batch_size)
         neighbors = get_neighbor_factors(diagonal)
-        all_neighbors += [1 / neighbors]
+        all_neighbors += [1 / np.sqrt(neighbors)]
         assert len(neighbors) == clr.chromsizes[chrom] // neighbor_res
     all_neighbors = np.concatenate(all_neighbors)
 

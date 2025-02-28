@@ -56,7 +56,7 @@ def filter_pairs(chrom_sizes, regions, direction, min_distance):
     sys.stdout.write(''.join(pf.header))
     for line in pf:
         if line_is_valid(line, chrom_sizes, regions=regions, direction_to_keep=direction, min_distance=min_distance):
-            sys.stdout.write(pf.format_line(line))
+            sys.stdout.write(pf.format_line(line) + '\n')
 
 
 @main.command()
