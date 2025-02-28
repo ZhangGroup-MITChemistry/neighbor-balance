@@ -21,13 +21,36 @@ closed chromatin regions located in the middle of a domain.
 
 ## Installation
 
-Clone this repository and install the package with pip.
+Create a conda environment.
+```bash
+conda create -n neighbor
+conda activate neighbor
+```
 
+Clone this repository, and install the package with pip.
 ```bash
 git clone https://github.com/ZhangGroup-MITChemistry/neighbor-balance.git
-cd neighbor_balancing
+cd neighbor-balance
 pip install .
 ````
+
+To perform the initial read alignment and conversion to pairs format, you will need to install the following packages:
+```bash
+conda install bioconda::sra-tools
+conda install bioconda::bowtie2
+conda install -c conda-forge -c bioconda pairtools
+```
+
+To run the tests you additionally need to install `pytest`:
+```bash
+conda install pytest
+```
+you can then run the tests with
+```bash
+cd tests
+pytest
+```
+
 
 ## Workflow
 
@@ -41,7 +64,6 @@ depicted above or the mapping of reads to nucleosome windows will be incorrect.
 ## Download data and set environment variables
 ```bash
 conda activate align
-script=~/na_genes/na_genes/microc/microc.py
 genome=mm39
 index=~/ucsc/mm39/mm39
 chromsizes=~/ucsc/mm39.chrom.sizes

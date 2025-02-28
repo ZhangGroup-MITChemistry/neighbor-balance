@@ -16,12 +16,16 @@ dependencies = [
     "cooler",
     "intervaltree",
     "matplotlib",
-    "cooler",
     "scipy",
+    "cooler",
+    "cooltools",
 ]
 
+[tool.setuptools]
+packages = ["neighbor_balance"]
+
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "jupyter"]
 
 [project.scripts]
 neighbor-balance = "neighbor_balance.cli:main"
