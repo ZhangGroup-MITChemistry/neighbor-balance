@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -17,7 +17,6 @@ dependencies = [
     "intervaltree",
     "matplotlib",
     "scipy",
-    "cooler",
     "cooltools",
 ]
 
@@ -25,7 +24,7 @@ dependencies = [
 packages = ["neighbor_balance"]
 
 [project.optional-dependencies]
-dev = ["pytest", "jupyter"]
+dev = ["pytest"]
 
 [project.scripts]
 neighbor-balance = "neighbor_balance.cli:main"
