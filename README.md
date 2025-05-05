@@ -13,7 +13,9 @@ The assumption is that neighboring windows are always in contact and should ther
 frequency of 1. Neighbor balancing achieves this by dividing each row/column by the square root of the average of its
 neighbor contact frequencies.
 
-$$ C^{(\text{neighbor})}_{ij} = \frac{C_{ij}}{\sqrt{\frac{1}{2} ( C_{i,j-1} + C_{i,j+1}) \frac{1}{2} (C_{i-1,j} + C_{i+1,j})}} $$
+```math
+C^{(\text{neighbor})}_{ij} = \frac{C_{ij}}{\sqrt{\frac{1}{2} ( C_{i,j-1} + C_{i,j+1}) \frac{1}{2} (C_{i-1,j} + C_{i+1,j})}}
+```
 
 In practice, we've observed that this procedure results in regions enriched for active epigenetic marks having lower
 contact densities, aligning with the expectation that these regions are more open.
