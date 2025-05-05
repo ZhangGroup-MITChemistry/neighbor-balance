@@ -148,7 +148,7 @@ def filter_bins(contact_map, capture_rates, mad_max=5, min_nnz=10, min_pair_capt
         mask = log_marginal < np.median(log_marginal) - mad_max * np.median(mad)
         all_nan = np.all(np.isnan(contact_map), axis=1)
         n_changes = np.sum(mask & ~all_nan)
-        print(f'Removing {n_changes} rows/columns with low coverage by mad-max.')
+        logging.info(f'Removing {n_changes} rows/columns with low coverage by mad-max.')
         contact_map[mask] = np.nan
 
     # Pair capture rate filter
@@ -156,7 +156,7 @@ def filter_bins(contact_map, capture_rates, mad_max=5, min_nnz=10, min_pair_capt
         pair_capture_rates = (capture_rates.reshape(-1, 1) + capture_rates.reshape(1, -1))
         mask = pair_capture_rates < min_pair_capture_rate
         n_changes = np.sum(mask & ~np.isnan(contact_map))
-        print(f'Removing {n_changes} entries with low capture rate.')
+        logging.info(f'Removing {n_changes} entries with low capture rate.')
         contact_map[mask] = np.nan
 
     # Number of non-zero pixel filter.
@@ -164,7 +164,7 @@ def filter_bins(contact_map, capture_rates, mad_max=5, min_nnz=10, min_pair_capt
         mask = np.sum(contact_map > 0, axis=1) < min_nnz
         all_nan = np.all(np.isnan(contact_map), axis=1)
         n_changes = np.sum(mask & ~all_nan)
-        print(f'Removing {n_changes} rows/columns with low coverage by min-nnz.')
+        logging.info(f'Removing {n_changes} rows/columns with low coverage by min-nnz.')
         contact_map[mask] = np.nan
         contact_map[:, mask] = np.nan
 

@@ -4,7 +4,7 @@ import cooler
 import logging
 
 
-def get_neighbor_factors(diag, eps=0, average='harmonic'):
+def get_neighbor_factors(diag, eps=0, average='arithmetic'):
     """
     Compute the neighbor factors for each window in a contact map.
 
@@ -17,7 +17,7 @@ def get_neighbor_factors(diag, eps=0, average='harmonic'):
         This is used to prevent pathological behavior when the neighbor factors are very small.
     average: str
         The method to average the neighbor factors. Options are 'harmonic', 'geometric', 'arithmetic', and 'mse'.
-        The 'harmonic' average is recommended.
+        The 'arithmetic' average is recommended.
 
     Returns
     -------
@@ -90,8 +90,8 @@ def normalize_contact_map_average(contact_map, max_prob=0.9, neighbor_prob=0.9):
     return contact_map
 
 
-def normalize_contact_map_neighbor(contact_map, bw=0, max_prob=0.95, neighbor_prob=0.5, max_iter=1, tol=1e-6, eps=1e-1,
-                                   average='harmonic'):
+def normalize_contact_map_neighbor(contact_map, bw=1, max_prob=10.0, neighbor_prob=1.0, max_iter=1, tol=1e-6, eps=1e-1,
+                                   average='arithmetic'):
     """
     Balance the contact map such that the first off-diagonal elements are close to 1.
 
@@ -118,6 +118,9 @@ def normalize_contact_map_neighbor(contact_map, bw=0, max_prob=0.95, neighbor_pr
     eps: float
         The minimum value for the neighbor factors as a fraction of the mean neighbor factor
          This is used to prevent pathological behavior when the neighbor factors are very small.
+    average: str
+        The method to average the neighbor factors. Options are 'harmonic', 'geometric', 'arithmetic', and 'mse'.
+        The 'arithmetic' average is recommended.
 
     Returns
     -------
@@ -181,25 +184,56 @@ def get_diagonal_for_chrom(clr, chrom, batch_size=1_000_000):
     return diagonal
 
 
-def add_neighbor_factors_to_cooler(cool_fname, neighbor_res=200, batch_size=1_000_000):
+def add_neighbor_factors_to_cooler(cool_fname, neighbor_res=200, batch_size=1_000_000, eps=10, overwrite=False):
+    """
+    Add neighbor balanced weights to the cooler file for each resolution.
+
+    The new weights are stored in the 'weight_neighbor' field of the cooler file.
+    """
+    WEIGHT_NEIGHBOR = 'weight_neighbor'
+
+    # Check if the cooler file already has a neighbor weight. if `overwrite`, remove it, otherwise raise an error.
+    for res_path in cooler.fileops.list_coolers(cool_fname):
+        clr = cooler.Cooler(f'{cool_fname}::{res_path}')
+        if WEIGHT_NEIGHBOR in clr.bins().keys():
+            if overwrite:
+                logging.info(f'Overwriting {WEIGHT_NEIGHBOR} in {res_path}.')
+                with clr.open("r+") as grp:
+                    del grp["bins"][WEIGHT_NEIGHBOR]
+            else:
+                raise ValueError(f'Cooler {res_path} already has a neighbor weight. Use --overwrite to overwrite.')
+
+    # Compute the neighbor factors for the neighbor resolution.
     clr = cooler.Cooler(f'{cool_fname}::/resolutions/{neighbor_res}')
-    all_neighbors = []
+    all_neighbors = {}
     for chrom in clr.chromsizes.index:
         diagonal = get_diagonal_for_chrom(clr, chrom, batch_size=batch_size)
         neighbors = get_neighbor_factors(diagonal)
-        all_neighbors += [1 / np.sqrt(neighbors)]
-        assert len(neighbors) == clr.chromsizes[chrom] // neighbor_res
-    all_neighbors = np.concatenate(all_neighbors)
+        assert len(neighbors) == np.ceil(clr.chromsizes[chrom] / neighbor_res)
+        all_neighbors[chrom] = neighbors
 
+    # Compute the neighbor factors for each resolution, as the average over the bins, and add them to the cooler file.
     for res_path in cooler.fileops.list_coolers(cool_fname):
         clr = cooler.Cooler(f'{cool_fname}::{res_path}')
         assert clr.binsize % neighbor_res == 0, 'Resolution must be a multiple of the neighbor resolution.'
-        cg_neighbors = np.array([np.nanmean(all_neighbors[i:i+clr.binsize//neighbor_res])
-                                 for i in range(0, len(all_neighbors), clr.binsize//neighbor_res)])
+        cg_neighbors = []
+        for chrom in clr.chromsizes.index:
+            bin_count = clr.binsize // neighbor_res
+            for i in range(0, len(all_neighbors[chrom]), bin_count):
+                vals = all_neighbors[chrom][i:i + bin_count]
+                if np.all(np.isnan(vals)) or len(vals) == 0:
+                    # Use the whole chromosome mean if none of the neighbors in the window are valid.
+                    # It should be rare that the row/column is unmasked and the neighbors are all nan,
+                    # but it can happen. Using the mean of the whole chromosome is a reasonable default.
+                    cg_neighbors += [np.nanmean(all_neighbors[chrom])]
+                else:
+                    cg_neighbors += [np.nanmean(vals)]
+        cg_neighbors = np.array(cg_neighbors)
 
-        weights = cg_neighbors * clr.bins()['weight'][:]
-        neighbor_store_name = 'weight_neighbors'
-        combined_store_name = 'weight_neighbors_times_ice'
+        # Apply eps to the cg_neighbors to prevent pathological behavior.
+        median = np.nanmedian(cg_neighbors)
+        cg_neighbors = np.clip(cg_neighbors, median / eps, median * eps)
+
+        weights = clr.bins()['weight'][:] / np.sqrt(cg_neighbors)
         with clr.open("r+") as grp:
-            grp["bins"].create_dataset(neighbor_store_name, data=cg_neighbors)
-            grp["bins"].create_dataset(combined_store_name, data=weights)
+            grp["bins"].create_dataset(WEIGHT_NEIGHBOR, data=weights)
