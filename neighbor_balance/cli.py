@@ -1,14 +1,18 @@
 import click
+import logging
 import sys
 import pandas as pd
+import numpy as np
 from intervaltree import IntervalTree, Interval
 from .pairs import PairsFile, shift_line, line_is_valid, remove_inward_reads_from_cooler, all_pairs_plots
-from .neighbor import add_neighbor_factors_to_cooler
+from .neighbor import add_neighbor_factors_to_cooler, normalize_contact_map_neighbor
+from .plotting import ContactMap, parse_region
+from .ice import ice_balance_with_interpolation, get_capture_rates
 
 
 @click.group()
 def main():
-    pass
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
 
 @main.command()
@@ -86,8 +90,67 @@ def remove_inward(full_cool, inward_cool, output_cool, k):
 @main.command()
 @click.argument('cool_fname')
 @click.option('--batch-size', default=1_000_000, help='Batch size to calculate the neighbors.')
-def neighbor_balance_cooler(cool_fname, batch_size):
+@click.option('--overwrite', is_flag=True, help='Overwrite the existing neighbor weights.')
+def neighbor_balance_cooler(cool_fname, batch_size, overwrite):
     """
     Add the inverse of the neighbors to the cooler.
     """
-    add_neighbor_factors_to_cooler(cool_fname, batch_size=batch_size)
+    add_neighbor_factors_to_cooler(cool_fname, batch_size=batch_size, overwrite=overwrite)
+
+
+@main.command()
+@click.argument('output_fname')
+@click.argument('cool-fname')
+@click.argument('region')
+@click.option('--resolution', default=200, help='Resolution of the contact map.')
+@click.option('--capture-probes-path', default=None, help='Path to the capture probes bed file.')
+@click.option('--mad-max', default=2, help='Minimum coverage in terms of medium absolute deviations.')
+@click.option('--min-nnz', default=100, help='Minimum number of non-zero values for the contact map.')
+@click.option('--min-pair-capture-rate', default=0.2, help='Minimum pair capture rate for each pixel.')
+@click.option('--max-iter', default=50, help='Maximum number of iterations for the balancing algorithm.')
+@click.option('--tol', default=1e-5, help='Tolerance for the balancing algorithm.')
+@click.option('--correct-for-flanks', default=True, help='Correct for flanking regions.')
+@click.option('--sigma-scale', default=2.0, help='Scale for the smoothing function.')
+@click.option('--sigma-exponent', default=0.2, help='Exponent for the smoothing function.')
+@click.option('--sigma-plateau', default=2, help='Plateau for the smoothing function.')
+def region_balance(output_fname, cool_fname, region, resolution, capture_probes_path, **normalization_params):
+    """
+    Balance individual regions of the contact map and save as a numpy file.
+
+    This routine is intended to be used with region-capture data. It provides balancing with interpolation of missing
+    values, accounts for flanking regions, and masks values not covered by a capture probe on either side. This
+    functionality is not currently supported for genome-wide cooler files, but it could be added in the future.
+
+    Note that this function does not perform neighbor balancing! Neighbor balancing on small regions is very fast and
+    there is no need to do it in advance.
+
+    To load saved contact map and subsequently neighbor balance it, use the following code:
+    >>> loaded = np.load('output_fname.npz', allow_pickle=True)
+    >>> contact_map = loaded['array']
+    >>> metadata = loaded['metadata'].item()
+    >>> contact_map = normalize_contact_map_neighbor(contact_map)
+    """
+    config = {
+        'contact_map_path': cool_fname,
+        'region': region,
+        'resolution': resolution,
+        'capture_probes_path': capture_probes_path,
+        'normalization_params': normalization_params
+    }
+
+    # Load the contact map. Have contacts point to the underlying numpy array; we don't need the extra functionality.
+    contacts = ContactMap.from_cooler(path=config['contact_map_path'], resolution=config['resolution'],
+                                      region=config['region'], balance=False)
+    contacts = contacts.contact_map
+
+    # Load capture rates.
+    if 'capture_probes_path' in config and config['capture_probes_path'] is not None:
+        chrom, start, end = parse_region(config['region'])
+        capture_rates = get_capture_rates(config['capture_probes_path'],
+                                          chrom, start, end, bin_size=config['resolution'])
+    else:
+        capture_rates = None
+
+    # Balance and save.
+    contacts = ice_balance_with_interpolation(contacts, capture_rates=capture_rates, **config['normalization_params'])
+    np.savez(output_fname, array=contacts, metadata=config)
