@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import logging
 from .smoothing import interpolate_nans, smoothing_sigma, interpolate_diagonals, get_distance_average
 
 
@@ -18,7 +19,8 @@ def ice_balance_with_interpolation(contact_map,
         f'Contact map must be raw counts and thereby type int, not {contact_map.dtype}.'
 
     if capture_rates is None:
-        print('No capture rates provided. Assuming uniform capture rates.', flush=True)
+        logging.info('No capture probes provided. Assuming entire region is covered by capture probes. '
+                     'If this is not the case, please provide a capture probes bed file.')
         capture_rates = np.ones(contact_map.shape[0])
 
     contact_map = filter_bins(contact_map.astype(float), capture_rates,
@@ -244,11 +246,11 @@ def ice_balance(contact_map, sigma=2.0, max_iter=50, tol=1e-5, interpolate=False
         if interpolate:
             W = interpolate_diagonals(W, sigma=sigma)
         B *= dB
-        print(f'Iteration {i}: mean={np.mean(S[S !=0 ])}, variance={np.var(S[S !=0 ])}')
+        logging.info(f'Iteration {i}: mean={np.mean(S[S != 0])}, variance={np.var(S[S != 0])}')
         if np.var(S) < tol:
             break
     else:
-        print('Warning: ICE balancing did not converge.')
+        logging.warning('Warning: ICE balancing did not converge.')
 
     if not interpolate:
         W[mask] = np.nan

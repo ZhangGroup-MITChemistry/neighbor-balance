@@ -85,7 +85,7 @@ def normalize_contact_map_average(contact_map, max_prob=0.9, neighbor_prob=0.9):
     contact_map = contact_map * correction
     mask = contact_map > max_prob
     count = np.sum(np.triu(mask, k=2))
-    print(f'Capping {count} non-diagonal contact probabilities to {max_prob}.', flush=True)
+    logging.info(f'Capping {count} non-diagonal contact probabilities to {max_prob}.')
     contact_map[mask] = max_prob
     return contact_map
 
@@ -131,11 +131,11 @@ def normalize_contact_map_neighbor(contact_map, bw=0, max_prob=0.95, neighbor_pr
         norm = np.sqrt(neighbor_factors.reshape(1, -1) * neighbor_factors.reshape(-1, 1))
         contact_map = contact_map / norm
 
-        print(f'Iteration: {i}, Mean: {np.mean(neighbor_factors):.2e}, Stddev: {np.std(neighbor_factors):.2e}')
+        logging.info(f'Iteration: {i}, Mean: {np.mean(neighbor_factors):.2e}, Stddev: {np.std(neighbor_factors):.2e}')
         if np.std(neighbor_factors) < tol:
             break
     else:
-        print('Warning: per-loci normalization did not converge.')
+        logging.warning('Neighbor balancing did not converge. This is expected.')
     return normalize_contact_map_average(contact_map, max_prob=max_prob, neighbor_prob=neighbor_prob)
 
 
@@ -157,6 +157,7 @@ def get_diagonal_for_chrom(clr, chrom, batch_size=1_000_000):
     np.ndarray
         Array with the average of the neighbors for each bin in the chromosome.
     """
+    # I'm sure there is a better way to do this...
     assert batch_size <= 1_000_000, 'batch size must be less than 1 Mb.'
     batch_size = (batch_size // clr.binsize) * clr.binsize
 
