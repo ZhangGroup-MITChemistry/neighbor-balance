@@ -7,6 +7,9 @@ from .ice import get_distance_average, get_marginal
 import logging
 import matplotlib as mpl
 import cooler
+import pyBigWig
+from scipy.ndimage import gaussian_filter1d, gaussian_filter
+from scipy.signal import find_peaks
 
 # cooltools.lib.plotting is currently not compatible with matplotlib > 3.8. All we need from it is the fall color map,
 # so I've copied the definition here. cooltools will probably be fixed in the next release, so at that point this
@@ -83,6 +86,77 @@ def label_comparison(ax, name1, name2, fontsize=16, **text_kwargs):
     ax.text(0.01, 0.01, name2, transform=ax.transAxes, ha='left', va='bottom', fontsize=fontsize, **text_kwargs)
 
 
+def load_bw(track, chrom, start, end, default=0):
+    """
+    Load a bigwig track and return the values in a given region.
+    """
+    bw = pyBigWig.open(track)
+    if chrom not in bw.chroms():
+        print(f'Chromosome {chrom} not found in {track}')
+        return np.zeros(end-start) * np.nan
+    vals = np.array(bw.values(chrom, start, end))
+    vals[np.isnan(vals)] = default
+    return vals
+
+
+def bin_track(vals, step=200):
+    """
+    Coarse-grain a track into bins of size step.
+    """
+    return np.array([np.nanmean(vals[i:i+step]) for i in range(0, len(vals), step)])
+
+
+def get_epigenetics(track, chrom, start, end, smoothing=0, bin=True):
+    """
+    Load a bigwig track and return the values in a given region.
+
+    Parameters
+    ----------
+    track: str
+        The path to the bigwig file.
+    chrom: str
+        The chromosome to load.
+    start: int
+        The start position of the region to load.
+    end: int
+        The end position of the region to load.
+    smoothing: int
+        The smoothing window size. If <= 0, no smoothing is applied.
+    bin: bool
+        Whether to bin the track into bins of size 200. This reduces the size of the array.
+
+    Returns
+    -------
+    x: np.ndarray
+        The x coordinates of the track.
+    vals: np.ndarray
+        The values of the track.
+    """
+    vals = load_bw(track, chrom, start, end)
+    if smoothing > 0:
+        vals = gaussian_filter1d(vals, smoothing)
+    if bin:
+        vals = bin_track(vals, 200)
+        x = np.arange(start, end, 200)
+    else:
+        x = np.arange(start, end)
+    return x, vals
+
+
+def get_epigenetics_ylims(contact_maps, tracks):
+    """
+    Get the maximum values of the epigenetic tracks in the contact maps
+    """
+    ylims = {}
+    for track_name, track in tracks.items():
+        high = -float('inf')
+        for contact_map in contact_maps:
+            _, vals = get_epigenetics(track, contact_map.chrom, contact_map.start, contact_map.end)
+            high = max(high, np.nanmax(vals))
+        ylims[track_name] = (0, high)
+    return ylims
+
+
 class ContactMap:
     def __init__(self, contact_map, chrom, start, end, resolution):
         self.contact_map = contact_map
@@ -92,7 +166,8 @@ class ContactMap:
         self.resolution = resolution
 
     @classmethod
-    def from_cooler(cls, path: str, resolution: int, region: str, balance=True, min_alpha=-1) -> "ContactMap":
+    def from_cooler(cls, path: str, resolution: int, region: str, balance=True, min_alpha=-1,
+                    cooler_internal_path='::/resolutions/') -> "ContactMap":
         """
         Load a contact map from a cooler file.
 
@@ -117,7 +192,8 @@ class ContactMap:
         np.ndarray
             The contact map.
         """
-        clr = cooler.Cooler(f'{path}::resolutions/' + str(resolution))
+        print(f'{path}{cooler_internal_path}{resolution}')
+        clr = cooler.Cooler(f'{path}{cooler_internal_path}{resolution}')
         contact_map = clr.matrix(balance=balance).fetch(region)
         if min_alpha > 0:
             logging.warning('Use of min_alpha is deprecated. Filter rows the right way.')
@@ -213,6 +289,125 @@ class ContactMap:
 
     def get_marginal(self, k=1, correct_for_flanks=False):
         return get_marginal(self.contact_map, k=k, correct_for_flanks=correct_for_flanks)
+
+    def compare(self, other, self_name=None, other_name=None, zoom_start=None, zoom_end=None, vmin=1e-3, vmax=1, bw=0, density_max=70):
+        if (self_name is None) != (other_name is None):
+            raise ValueError('Both contact maps must have names or neither can have names.')
+        if not self.are_comparable(other):
+            raise ValueError('Contact maps are not comparable. They must have the same chromosome and start/end positions.')
+
+        f, ax = plt.subplots(2, 9, figsize=(12, 3.75), sharex='col',
+                            gridspec_kw={'hspace': 0.1, 'height_ratios': [10, 1], 'width_ratios': [20, 1, 3]*3, 'wspace': 0.05})
+
+        def cleanup(i):
+            if zoom_start is not None:
+                ax[0, i].set_xlim(zoom_start, zoom_end)
+                ax[0, i].set_ylim(zoom_end, zoom_start)
+                ax[1, i].set_xlim(zoom_start, zoom_end)
+            format_ticks(ax[1, i], y=False)
+            ax[1, i].set_ylim(0, density_max)
+            ax[1, i+1].axis('off')
+            ax[0, i+2].axis('off')
+            ax[1, i+2].axis('off')
+
+        if bw > 0:
+            self = self.copy()
+            other = other.copy()
+            self.contact_map = np.tril(gaussian_filter(self.contact_map, bw)) + np.triu(self.contact_map, k=1)
+            other.contact_map = np.tril(gaussian_filter(other.contact_map, bw)) + np.triu(other.contact_map, k=1)
+        
+        i = 0
+        im = other.plot_contact_map(ax=ax[0, i], vmin=vmin, vmax=vmax, colorbar=False)
+        plt.colorbar(im, cax=ax[0, i+1], orientation='vertical', extend='min')
+        ax[1, i].plot(other.x(), other.get_marginal(), c='gray')
+        ax[1, i].set_ylabel('Contact density', rotation=0, ha='right', va='center')
+        cleanup(i)
+        if other_name is not None:
+            ax[0, i].set_title(other_name)
+    
+        i = 3
+        im = self.plot_contact_map(ax=ax[0, i], vmin=vmin, vmax=vmax, colorbar=False)
+        plt.colorbar(im, cax=ax[0, i+1], orientation='vertical', extend='min')
+        ax[1, i].plot(self.x(), self.get_marginal(), c='black')
+        
+        cleanup(i)
+        ax[0, i].set_yticklabels([])
+        ax[1, i].set_yticklabels([])
+        if self_name is not None:
+            ax[0, i].set_title(self_name)
+
+        i = 6
+        log_change = self.copy()
+        log_change.contact_map = np.log2(self.contact_map / other.contact_map)
+        im = log_change.plot_contact_map(cmap='coolwarm', vmin=-2, vmax=2, colorbar=False, ax=ax[0, i], log_norm=False)
+        plt.colorbar(im, cax=ax[0, i+1], orientation='vertical')
+        ax[1, i].plot(other.x(), other.get_marginal(), c='gray')
+        ax[1, i].plot(self.x(), self.get_marginal(), c='black')
+        cleanup(i)
+        ax[0, i].set_yticklabels([])
+        ax[1, i].set_yticklabels([])
+        if self_name is not None and other_name is not None:
+            ax[0, i].set_title(f'log2 {self_name} / {other_name}')
+
+        return f, ax
+    
+    def epigenetics_plot(self, tracks, depth=None, vmin=1e-4, smoothing=200, bin=True, show_map=True, ylims=None,
+                         contact_height=0.75, width=20, track_height=0.5, mean_density=None):
+        if depth is None:
+            depth = (self.end - self.start) / 3
+
+        if show_map:
+            height_ratios = [width * depth / (1.5 * (self.end - self.start))]
+            height_ratios += [contact_height]
+            height_ratios += [track_height]*len(tracks)
+            f, axs = plt.subplots(len(height_ratios), 1, figsize=(width, sum(height_ratios)), sharex=True,
+                                gridspec_kw={'height_ratios': height_ratios})
+            self.plot_contact_map_horizontal(ax=axs[0], depth=depth, vmin=vmin)
+            axs = axs[1:]
+        else:
+            height_ratios = [contact_height]
+            height_ratios += [track_height]*len(tracks)
+            f, axs = plt.subplots(len(height_ratios), 1, figsize=(width, sum(height_ratios)), sharex=True,
+                                gridspec_kw={'height_ratios': height_ratios})
+
+        def format_ylabel(ax, name):
+            # ax.set_ylabel(name, rotation=0, ha='left', labelpad=-10,
+            #               bbox=dict(facecolor='white', edgecolor='none', alpha=0.5))
+            ax.set_ylabel(name, rotation=0, ha='right', va='center')
+            ax.yaxis.tick_right()
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            if ylims is not None:
+                ax.set_ylim(*ylims[name])
+                
+        marginal = self.get_marginal()
+        peaks, _ = find_peaks(gaussian_filter1d(-np.log2(marginal), 5), prominence=0.4)
+        print(peaks)
+        for peak in peaks:
+            for ax in axs:
+                ax.axvline(self.x()[peak], c='gray', lw=1, alpha=0.5)
+
+        axs[0].set_xlim(self.start, self.end)
+        format_ticks(axs[0], y=False)
+
+        if mean_density is None:
+            mean_density = np.nanmean(marginal)
+        axs[0].axhline(mean_density, ls='--', c='grey')
+        axs[0].set_yticks([mean_density])
+        axs[0].plot(self.x(), marginal, c='black')
+        format_ylabel(axs[0], 'Contact density')
+
+        for i, (name, track) in enumerate(tracks.items()):
+            ax = axs[i+1]
+            x, vals = get_epigenetics(track, self.chrom, self.start, self.end, smoothing=smoothing, bin=bin)
+            ax.fill_between(self.x(), np.zeros(vals.shape), vals, color='green')
+            format_ylabel(ax, name)
+
+            ax.set_ylim(0)
+            ax.set_xlim((self.start, self.end))
+            ax.get_yticklabels()[0].set_visible(False)
+        return f, axs
 
 
 # def plot_contact_map_and_marginal(contact_map: np.ndarray, region: str, vmax=1, vmin=0.00001):

@@ -2,7 +2,9 @@
 .pytest_cache/
 __pycache__
 *.pyc
-scripts
 build
 *.egg-info
 region_contact_maps
+notebooks
+*.cool
+*.mcool
