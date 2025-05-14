@@ -60,7 +60,7 @@ def get_neighbor_factors(diag, eps=0, average='arithmetic'):
     return neighbor_factors
 
 
-def normalize_contact_map_average(contact_map, max_prob=0.9, neighbor_prob=0.9):
+def normalize_contact_map_average(contact_map, max_prob=10.0, neighbor_prob=1.0):
     """
     Normalize the contact map by dividing by the average of the diagonal (a single scaler).
 
