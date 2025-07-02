@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize
 from matplotlib.ticker import EngFormatter
+from matplotlib.gridspec import GridSpec
 import numpy as np
 import itertools
 from .ice import get_distance_average, get_marginal
@@ -166,6 +167,30 @@ class ContactMap:
         self.resolution = resolution
 
     @classmethod
+    def from_npz(cls, npz_file):
+        """
+        Load a contact map from a npz file.
+
+        This would typically be the output from computing an ICE balanced contact map for a specific genomic region.
+        The npz file should contain two entries: 'array' for the contact map and 'metadata' for the region information.
+        The metadata should include 'region' (str: chrom:start-end) and 'resolution' (int: 200).
+        
+        Parameters
+        ----------
+        npz_file: str
+            The path to the npz file.
+
+        Returns
+        -------
+        ContactMap
+        """
+        loaded = np.load(npz_file, allow_pickle=True)
+        contact_map = loaded['array']
+        metadata = loaded['metadata'].item()
+        chrom, start, end = parse_region(metadata['region'])
+        return ContactMap(contact_map, chrom, start, end, metadata['resolution'])
+
+    @classmethod
     def from_cooler(cls, path: str, resolution: int, region: str, balance=True, min_alpha=-1,
                     cooler_internal_path='::/resolutions/') -> "ContactMap":
         """
@@ -189,8 +214,7 @@ class ContactMap:
 
         Returns
         -------
-        np.ndarray
-            The contact map.
+        ContactMap
         """
         print(f'{path}{cooler_internal_path}{resolution}')
         clr = cooler.Cooler(f'{path}{cooler_internal_path}{resolution}')
@@ -362,13 +386,15 @@ class ContactMap:
             height_ratios += [track_height]*len(tracks)
             f, axs = plt.subplots(len(height_ratios), 1, figsize=(width, sum(height_ratios)), sharex=True,
                                 gridspec_kw={'height_ratios': height_ratios})
-            self.plot_contact_map_horizontal(ax=axs[0], depth=depth, vmin=vmin)
+            self.plot_contact_map_horizontal(ax=axs[0], depth=depth, vmin=vmin, colorbar=False)
+            contact_map_ax = axs[0]
             axs = axs[1:]
         else:
             height_ratios = [contact_height]
             height_ratios += [track_height]*len(tracks)
             f, axs = plt.subplots(len(height_ratios), 1, figsize=(width, sum(height_ratios)), sharex=True,
                                 gridspec_kw={'height_ratios': height_ratios})
+            contact_map_ax = None
 
         def format_ylabel(ax, name):
             # ax.set_ylabel(name, rotation=0, ha='left', labelpad=-10,
@@ -407,31 +433,29 @@ class ContactMap:
             ax.set_ylim(0)
             ax.set_xlim((self.start, self.end))
             ax.get_yticklabels()[0].set_visible(False)
-        return f, axs
+        return f, axs, contact_map_ax
 
 
-# def plot_contact_map_and_marginal(contact_map: np.ndarray, region: str, vmax=1, vmin=0.00001):
-#     margin = 0.5
-#     sep = 0.2
-#     base = 0.4
-#     h = 22 * base + 2 * margin + sep
-#     w = 21 * base + 3 * margin + sep
-#     left_right = margin / w
-#     top_bottom = margin / h
-#     f = plt.figure(figsize=(w, h), dpi=200)
-#     gs = GridSpec(2, 2, height_ratios=[20, 2], width_ratios=[20, 1],
-#                   left=2*left_right, right=1-left_right, wspace=sep/w,
-#                   top=1-top_bottom, bottom=top_bottom, hspace=sep/h)
-#
-#     image_ax = f.add_subplot(gs[0, 0])
-#     cbar_ax = f.add_subplot(gs[0, 1].subgridspec(3, 1, height_ratios=[0.25, 1, 0.25])[1])
-#     plot_ax = f.add_subplot(gs[1, 0], sharex=image_ax)
-#
-#     im = plot_contact_map(contact_map, region, ax=image_ax, vmax=vmax, vmin=vmin, colorbar=False)
-#     plt.colorbar(im, cax=cbar_ax, extend='min')
-#     image_ax.tick_params(labelbottom=False)
-#
-#     chrom, start, end = parse_region(region)
-#     resolution = (end - start) // contact_map.shape[0]
-#     plot_ax.plot(range(start, end, resolution), get_marginal(contact_map))
-#     plot_ax.tick_params(axis='x', rotation=20)
+    def plot_contact_map_and_marginal(self, vmax=1, vmin=0.00001):
+        margin = 0.5
+        sep = 0.2
+        base = 0.4
+        h = 22 * base + 2 * margin + sep
+        w = 21 * base + 3 * margin + sep
+        left_right = margin / w
+        top_bottom = margin / h
+        f = plt.figure(figsize=(w, h), dpi=200)
+        gs = GridSpec(2, 2, height_ratios=[20, 2], width_ratios=[20, 1],
+                    left=2*left_right, right=1-left_right, wspace=sep/w,
+                    top=1-top_bottom, bottom=top_bottom, hspace=sep/h)
+
+        image_ax = f.add_subplot(gs[0, 0])
+        cbar_ax = f.add_subplot(gs[0, 1].subgridspec(3, 1, height_ratios=[0.25, 1, 0.25])[1])
+        plot_ax = f.add_subplot(gs[1, 0], sharex=image_ax)
+
+        im = self.plot_contact_map(ax=image_ax, vmax=vmax, vmin=vmin, colorbar=False)
+        plt.colorbar(im, cax=cbar_ax, extend='min')
+        image_ax.tick_params(labelbottom=False)
+
+        plot_ax.plot(self.x(), self.get_marginal(), c='black')
+        plot_ax.tick_params(axis='x', rotation=20)
