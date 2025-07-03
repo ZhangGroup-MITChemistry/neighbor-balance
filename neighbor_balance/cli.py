@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 import numpy as np
 from intervaltree import IntervalTree, Interval
-from .pairs import PairsFile, shift_line, line_is_valid, remove_inward_reads_from_cooler, all_pairs_plots
+from .pairs import PairsFile, shift_line, line_is_valid, remove_inward_reads_from_cooler, all_pairs_plots, get_base_ps
 from .neighbor import add_neighbor_factors_to_cooler, normalize_contact_map_neighbor
 from .plotting import ContactMap, parse_region
 from .ice import ice_balance_with_interpolation, get_capture_rates
@@ -72,6 +72,24 @@ def analyze_pairs(pairs_fname, protected_over_2, nrows):
     Analyze pairs file.
     """
     all_pairs_plots(pairs_fname, protected_over_2, nrows)
+
+
+@main.command()
+@click.argument('pairs_fname')
+@click.option('--nrows', default=None, type=int, help='Number of reads to analyze.')
+@click.option('--max-distance', default=100_000, help='Maximum distance to consider.')
+@click.option('--output', default=None, help='Output file name.')
+def base_ps(pairs_fname, nrows, max_distance, output):
+    """
+    Save base resolution P(s) curve to a csv file.
+    """
+    counts = get_base_ps(pairs_fname, nrows=nrows, high=max_distance)
+    counts = pd.DataFrame(counts)
+    counts['distance'] = np.arange(len(counts))
+
+    if output is None:
+        output = pairs_fname + '.base_ps.csv'
+    counts.to_csv(output, index=False)
 
 
 @main.command()

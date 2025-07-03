@@ -222,6 +222,34 @@ def windowed_distance_plot(df, window=200, high=10, pos1='pos1', pos2='pos2', ax
     ax.set_ylim(0, 1)
 
 
+def get_base_ps(pairs_fname, nrows=None, high=10_0000):
+    directions = ['inward', 'outward', 'tandem_entry', 'tandem_exit']
+
+    counts = {direction: np.zeros(high) for direction in directions}
+    for df in PairsFile.as_pandas(pairs_fname, nrows=nrows, chunksize=1_000_000):
+        df = df.loc[df.pair_type == 'UU']
+        if not len(df):
+            continue
+        intra_chrom = df.chrom1 == df.chrom2
+        df = df.loc[intra_chrom]
+
+        strand1 = df.strand1 == '+'
+        strand2 = df.strand2 == '+'
+        conditions = [
+            (strand1 & ~strand2),
+            (~strand1 & strand2),
+            (strand1 & strand2),
+            (~strand1 & ~strand2)
+        ]
+        df['direction'] = np.select(conditions, directions, default='this should not happen')
+
+        for direction, _df in df.groupby('direction'):
+            dist = (_df.pos2 - _df.pos1).to_numpy()
+            dist = dist[dist > 0]
+            counts[direction] += count(dist, high)
+    return counts
+
+
 def all_pairs_plots(pairs_fname, protected_over_2, nrows):
     colors = {'inward': 'cornflowerblue',
               'outward': 'mediumvioletred',
@@ -266,25 +294,5 @@ def all_pairs_plots(pairs_fname, protected_over_2, nrows):
             dist = dist[dist > 0]
             counts_shifted[direction] += count(dist, high)
 
-        # thresh = 1000
-        # close = df.loc[(df.pos2 - df.pos1) <= thresh]
-        # close_counts = [np.mean(close.direction == direction) for direction in colors]
-        # far = df.loc[(df.pos2 - df.pos1) > thresh]
-        # far_counts = [np.mean(far.direction == direction) for direction in colors]
-
-    # f, ax = plt.subplots(1, 2, figsize=(10, 5))
-    # ax[0].pie(close_counts, labels=colors.keys(), colors=colors.values(), normalize=True, autopct='%1.1f%%')
-    # ax[0].set_title('genomic separation <= 1kb')
-    # ax[1].pie(far_counts, labels=colors.keys(), colors=colors.values(), normalize=True, autopct='%1.1f%%')
-    # ax[1].set_title('genomic separation > 1kb')
-    # plt.savefig(f'{pairs_fname}_pie.png')
-    # plt.close()
-
     ligation_distance_plot(counts, f'{pairs_fname}_raw.png', colors)
     ligation_distance_plot(counts_shifted, f'{pairs_fname}_shifted.png', colors)
-
-    # f, ax = plt.subplots()
-    # windowed_distance_plot(df, ax=ax, label='raw')
-    # windowed_distance_plot(df, ax=ax, label='shifted', pos1='pos1_shifted', pos2='pos2_shifted')
-    # plt.savefig(f'{pairs_fname}_windowed.png')
-    # plt.close()
