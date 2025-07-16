@@ -4,7 +4,7 @@ import cooler
 import logging
 
 
-def get_neighbor_factors(diag, eps=0, average='arithmetic'):
+def get_neighbor_factors(diag, eps=0.0, average='arithmetic', main_diag=None):
     """
     Compute the neighbor factors for each window in a contact map.
 
@@ -41,6 +41,10 @@ def get_neighbor_factors(diag, eps=0, average='arithmetic'):
             idx = [i-1, i]
 
         neighbors = diag[idx]
+        if main_diag is not None:
+            assert average == 'arithmetic', 'main_diag can only be used with arithmetic average'
+            neighbors = np.append(neighbors, main_diag[i])
+
         if np.all(np.isnan(neighbors)):
             neighbor_factors[i] = np.nan
         else:
@@ -91,7 +95,7 @@ def normalize_contact_map_average(contact_map, max_prob=10.0, neighbor_prob=1.0)
 
 
 def normalize_contact_map_neighbor(contact_map, bw=1, max_prob=10.0, neighbor_prob=1.0, max_iter=1, tol=1e-6, eps=1e-1,
-                                   average='arithmetic'):
+                                   average='arithmetic', use_main_diag=False):
     """
     Balance the contact map such that the first off-diagonal elements are close to 1.
 
@@ -128,7 +132,8 @@ def normalize_contact_map_neighbor(contact_map, bw=1, max_prob=10.0, neighbor_pr
         The normalized contact map.
     """
     for i in range(max_iter):
-        neighbor_factors = get_neighbor_factors(np.diagonal(contact_map, 1).copy(), eps=eps, average=average)
+        neighbor_factors = get_neighbor_factors(np.diagonal(contact_map, 1).copy(), eps=eps, average=average,
+                                                main_diag=np.diagonal(contact_map, 0) if use_main_diag else None)
         if bw > 0:
             neighbor_factors = gaussian_filter1d(neighbor_factors, bw, mode='reflect')
         norm = np.sqrt(neighbor_factors.reshape(1, -1) * neighbor_factors.reshape(-1, 1))

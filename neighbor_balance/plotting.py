@@ -422,7 +422,7 @@ class ContactMap:
         axs[0].axhline(mean_density, ls='--', c='grey')
         axs[0].set_yticks([mean_density])
         axs[0].plot(self.x(), marginal, c='black')
-        format_ylabel(axs[0], 'Contact density')
+        format_ylabel(axs[0], 'Contact\ndensity')
 
         for i, (name, track) in enumerate(tracks.items()):
             ax = axs[i+1]

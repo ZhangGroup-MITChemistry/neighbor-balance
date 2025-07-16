@@ -39,7 +39,7 @@ Clone this repository, and install the package with pip.
 git clone https://github.com/ZhangGroup-MITChemistry/neighbor-balance.git
 cd neighbor-balance
 pip install .
-````
+```
 
 To perform the initial read alignment and conversion to pairs format, you will additionally need to install `sra-tools`,
 `bowtie2`, and `pairtools`.
@@ -224,7 +224,35 @@ regions. To do this, we compute the contact frequency as a function of genomic s
 sum the contact frequencies with windows outside of the capture region and add this to the window's marginal.
 
 
-# Bonus: Extract "MNase track" from the pairs file
+# Bonus
+
+## Plot base resolution P(s) curve
+
+Inspecting the very short range P(s) curve is useful for diagnosing batch effects. The
+
+```bash
+neighbor-balance base-ps /path/to/pairs.gz --nrows 100_000_000
+```
+
+```python
+from scipy.ndimage import gaussian_filter1d
+import pandas as pd
+import matplotlib.pyplot as plt
+
+sigma = 10
+fname = '/path/to/pairs.gz.base_ps.csv'
+
+counts = pd.read_csv(fname)
+for direction in ['inward', 'outward', 'tandem_entry', 'tandem_exit']:
+    plt.plot(counts['distance'], gaussian_filter1d(counts[direction], sigma=sigma), label=direction)
+plt.yscale('log')
+plt.xscale('log')
+plt.xlim(50)
+plt.legend()
+plt.show()
+```
+
+## Extract "MNase track" from the pairs file
 We can get a "MNase track" by considering the positions of each read pair independently. This has an advantage over
 typical MNase in that the sequencing is much deeper. However, a disadvantage is that, since we are not sequencing the
 ends of each fragment of nucleosome protected DNA (as in typical MNase), we do not know the appropriate shift to apply
