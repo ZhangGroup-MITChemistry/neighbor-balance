@@ -167,24 +167,28 @@ def get_diagonal_for_chrom(clr, chrom, batch_size=1_000_000):
     """
     # I'm sure there is a better way to do this...
     assert batch_size <= 1_000_000, 'batch size must be less than 1 Mb.'
-    batch_size = (batch_size // clr.binsize) * clr.binsize
+    batch_size = (batch_size // clr.binsize) * clr.binsize  # Make sure batch size is a multiple of the binsize.
 
-    start, end = 0, clr.chromsizes[chrom] - 1
-    diagonal = np.zeros(end // clr.binsize)
-    for i, s in enumerate(range(0, end, batch_size)):
+    start, end = 0, clr.chromsizes[chrom]  # Half open, 0-based interval.
+
+    # When a region is fetched, if any part of the region overlaps a bin, the whole bin is returned.
+    # Therefore, for the whole chromosome, we will get ceil(end / clr.binsize) bins. The first diagonal
+    # will then have one fewer elements.
+    diagonal = np.zeros(np.ceil(end / clr.binsize).astype(int) - 1)
+
+    for i, s in enumerate(range(start, end, batch_size)):
+        # s and e are 0-based, half-open coordinates and should always be multiples of the binsize
+        e = min(end, s + batch_size + clr.binsize)  # Add binsize to get overlap between batches.
+
+        # These are the indices in the diagonal that will be written in this batch.
         s_i = s // clr.binsize
-
-        if end > s + batch_size + clr.binsize:
-            e = s + batch_size + clr.binsize  # Add binsize to get overlap between batches.
-            e_i = e // clr.binsize - 1
-        else:
-            e = end
-            e_i = e // clr.binsize
+        e_i = np.ceil(e / clr.binsize).astype(int) - 1
 
         if not i % 10:
             logging.info(f'Getting neighbors for {chrom}:{s}')
 
-        cmap = clr.matrix(balance='weight').fetch(f'{chrom}:{s+1}-{e}')  # Region coordinates are inclusive.
+        # Region coordinates are inclusive, 1-based, so we should add one to the start.
+        cmap = clr.matrix(balance='weight').fetch(f'{chrom}:{s+1}-{e}')  
         diagonal[s_i:e_i] = np.diagonal(cmap, 1)
     return diagonal
 
