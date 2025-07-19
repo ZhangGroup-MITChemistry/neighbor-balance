@@ -147,7 +147,7 @@ def normalize_contact_map_neighbor(contact_map, bw=1, max_prob=10.0, neighbor_pr
     return normalize_contact_map_average(contact_map, max_prob=max_prob, neighbor_prob=neighbor_prob)
 
 
-def get_diagonal_for_chrom(clr, chrom, batch_size=1_000_000):
+def get_diagonal_for_chrom(clr, chrom, batch_size=1_000_000, balance='weight'):
     """
     Get the first diagonal of the contact map for the given chromosome from a cooler file.
 
@@ -188,7 +188,7 @@ def get_diagonal_for_chrom(clr, chrom, batch_size=1_000_000):
             logging.info(f'Getting neighbors for {chrom}:{s}')
 
         # Region coordinates are inclusive, 1-based, so we should add one to the start.
-        cmap = clr.matrix(balance='weight').fetch(f'{chrom}:{s+1}-{e}')  
+        cmap = clr.matrix(balance=balance).fetch(f'{chrom}:{s+1}-{e}')  
         diagonal[s_i:e_i] = np.diagonal(cmap, 1)
     return diagonal
 

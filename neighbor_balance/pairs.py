@@ -100,7 +100,7 @@ def line_is_valid(line, chrom_sizes, *, regions=None, direction_to_keep=None, mi
     # Filter reads that are too close or outside the chromosome.
     if pos1 <= 0 or pos2 <= 0 or pos1 > chrom_sizes[chrom1] or pos2 > chrom_sizes[chrom2]:
         return False
-    if pos2 - pos1 < min_distance:
+    if chrom1 == chrom2 and pos2 - pos1 < min_distance:
         return False
 
     # Filter reads that are outside the specified regions.
