@@ -191,3 +191,12 @@ def test_line_processor_filter_direction():
 def test_line_processor_filter_min_dist():
     line = make_line(strand1='+', strand2='-', pos1=1000, pos2=999)
     assert not line_is_valid(line, chrom_sizes())
+
+def test_line_is_valid():
+    # Intra-chromosomal contact with pos2 < pos1
+    line = make_line(chrom1='chr1', pos1=2000, chrom2='chr2', pos2=1000, strand1='+', strand2='+')
+    assert line_is_valid(line, chrom_sizes())
+
+    # Intra-chromosomal contact with pos1 < pos2
+    line = make_line(chrom1='chr1', pos1=1000, chrom2='chr2', pos2=2000, strand1='+', strand2='+')
+    assert line_is_valid(line, chrom_sizes())

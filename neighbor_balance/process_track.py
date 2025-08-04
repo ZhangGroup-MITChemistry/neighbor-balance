@@ -75,6 +75,14 @@ def bedgraph_merge(filename):
         with open(filename, 'r') as fp:
             _bedgraph_merge(fp)
 
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@click.argument('column', type=str)
+def gtab_to_bedgraph(filename, column):
+    df = pd.read_csv(filename, sep='\t')
+    output = f'{filename.replace('.gtab.txt', '')}_{column}.bedgraph'
+    df[['Chromosome', 'Start', 'End', column]].to_csv(output, sep='\t', header=False, index=False)
+
 
 @cli.command()
 @click.argument('name')

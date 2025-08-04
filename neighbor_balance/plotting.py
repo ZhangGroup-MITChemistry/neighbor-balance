@@ -47,6 +47,10 @@ def apply_matplotlib_style():
     mpl.rcParams['savefig.bbox'] = 'tight'
 
 
+def stylize_gene_name(name):
+    return fr"$\mathit{{{name.capitalize()}}}$"
+
+
 def parse_region(region: str) -> tuple[str, int, int]:
     chrom, rest = region.split(':')
     start, end = rest.split('-')
@@ -430,7 +434,6 @@ class ContactMap:
             ax.fill_between(self.x(), np.zeros(vals.shape), vals, color='green')
             format_ylabel(ax, name)
 
-            ax.set_ylim(0)
             ax.set_xlim((self.start, self.end))
             ax.get_yticklabels()[0].set_visible(False)
         return f, axs, contact_map_ax
