@@ -25,7 +25,7 @@ prefetch -p --max-size 100GB SRX15946369 # WT BR1
 cd "$root" || exit
 for sra in SRR*; do
     cd $root/$sra || exit
-    sbatch -J $sra --dependency=SINGLETON --wrap="fasterq-dump -p ${sra}.sra"
+    sbatch -J $sra -p $partition --dependency=SINGLETON --wrap="fasterq-dump -p ${sra}.sra"
 done
 
 
@@ -38,14 +38,14 @@ for sra in SRR*; do
          | pairtools parse --add-columns mapq --walks-policy mask -c $chromsizes --assembly $genome --min-mapq 2 --drop-sam \
          | pairtools sort -o ${sra}.pairs.gz"
     echo "$cmd"
-    sbatch --cpus-per-task 48 -t 96:00:00 -J $sra --dependency=SINGLETON --wrap="$cmd"
+    sbatch --cpus-per-task 48 -p $partition -J $sra --dependency=SINGLETON --wrap="$cmd"
 done
 
 
 ####################################################################################################
 # Merge, dedup, shift, and filter.
 # For genome-wide datasets, remove the --regions argument.
-sbatch --cpus-per-task 16 -t 96:00:00 -J $name --dependency=SINGLETON \
+sbatch  --mem=32G--cpus-per-task 16 -p $partition -t 96:00:00 -J $name --dependency=SINGLETON -p $partition \
   --wrap="pairtools merge SRR*/SRR*.pairs.gz \
   | pairtools dedup --max-mismatch 1 --mark-dups --output-stats ${name}.dedup.stats \
   | neighbor-balance shift-pairs --protected-over-2 65 \
@@ -55,7 +55,7 @@ sbatch --cpus-per-task 16 -t 96:00:00 -J $name --dependency=SINGLETON \
 
 ####################################################################################################
 # Load into coolers and balance.
-sbatch --cpus-per-task 16 -t 24:00:00 -J $name --dependency=SINGLETON \
+sbatch --mem=32G --cpus-per-task 16 -J $name --dependency=SINGLETON -p $partition \
   --wrap="zcat ${name}.nodups.select.shifted.pairs.gz \
   | cooler cload pairs -c1 2 -p1 3 -c2 4 -p2 5 $chromsizes:200 - ${name}.cool & \
   zcat ${name}.nodups.select.shifted.pairs.gz \
@@ -63,10 +63,10 @@ sbatch --cpus-per-task 16 -t 24:00:00 -J $name --dependency=SINGLETON \
   | cooler cload pairs -c1 2 -p1 3 -c2 4 -p2 5 $chromsizes:200 - ${name}_inward.cool & \
   wait;"
 
-sbatch --cpus-per-task 16 -t 24:00:00 -J $name --dependency=SINGLETON \
+sbatch --mem=32G --cpus-per-task 16 -J $name --dependency=SINGLETON -p $partition \
   --wrap="neighbor-balance remove-inward ${name}.cool ${name}_inward.cool ${name}_minus_inward.cool"
 
-sbatch --cpus-per-task 16 -t 24:00:00 -J $name --dependency=SINGLETON \
+sbatch --mem=32G --cpus-per-task 16 -J $name --dependency=SINGLETON -p $partition \
   --wrap="cooler zoomify --balance --balance-args '--ignore-diags 0' --resolutions 200,400,800,1600,3200,6400,12800,25600,51200,102400 \
           --out ${name}_minus_inward.mcool ${name}_minus_inward.cool"
 
@@ -75,7 +75,7 @@ sbatch --cpus-per-task 16 -t 24:00:00 -J $name --dependency=SINGLETON \
 # Add neighbor balance weights to cooler
 # This is useful for genome-wide datasets, for region-capture datasets process regions individually (see README.md).
 
-sbatch --cpus-per-task 16 -t 24:00:00 -J $name --dependency=SINGLETON \
+sbatch --mem=32G -J $name --dependency=SINGLETON -p $partition \
   --wrap="neighbor-balance neighbor-balance-cooler ${name}_minus_inward.mcool"
 
 

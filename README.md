@@ -56,8 +56,10 @@ pytest
 
 While the actual neighbor balancing procedure is simple, we've found that there are several changes in
 the processing pipeline that are necessary to achieve good results. This unfortunately requires starting from a pairs
-or fastq file. See `run_processing.sh` for the commands to run the
-updated pipeline. See the below section "Raw data to contact map" for details and justification of the changes.
+or fastq file. The updated pipeline can be run through snakemake (see `Snakefile`). The commands are also written out
+in `run_processing.sh`, if you prefer not to set up snakemake, but note that this "script" is more a list of commands
+that should be run individually.
+See the below section "Raw data to contact map" for details and justification of the changes.
 
 **Applying neighbor balancing to contact maps computed without these changes will result in incorrect results.**
 
@@ -70,7 +72,9 @@ neighbor-balance neighbor-balance-cooler example.mcool
 ```
 
 This will store an additional column of weights called `weight_neighbor`, which can be used to weight the contact
-frequencies. Note that you will need to explicitly specify to use the neighbor balanced weights in subsequent steps,
+frequencies.
+
+Note that you will need to explicitly specify to use the neighbor balanced weights in subsequent steps,
 e.g.:
 
 ```python
@@ -228,7 +232,7 @@ sum the contact frequencies with windows outside of the capture region and add t
 
 ## Plot base resolution P(s) curve
 
-Inspecting the very short range P(s) curve is useful for diagnosing batch effects. The
+Inspecting the very short range P(s) curve is useful for diagnosing batch effects.
 
 ```bash
 neighbor-balance base-ps /path/to/pairs.gz --nrows 100_000_000
@@ -276,10 +280,3 @@ zcat ../WT_BR1/all.nodups.pairs.gz \
 
 bedGraphToBigWig all.nodups.shift73.bg $chromsizes all.nodups.shift73.bw
 ```
-
-# Notes
-
-* In theory, Neighbor Balancing could be applied without ever performing ICE balancing. However, in practice, the first
-diagonal contains too much noise to provide useful normalization, for instance, leading to strong stripes
-for rows that happen to have low values of the diagonal. We found that first performing ICE normalization, then
-smoothing the first off-diagonal, and only then applying neighbor balancing produces a smooth contact map.

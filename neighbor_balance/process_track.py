@@ -2,6 +2,7 @@ import click
 import sys
 import gzip
 import os
+import pandas as pd
 
 def _select_wig_track(fp, track):
     """
