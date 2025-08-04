@@ -193,7 +193,7 @@ def get_diagonal_for_chrom(clr, chrom, batch_size=1_000_000, balance='weight'):
     return diagonal
 
 
-def add_neighbor_factors_to_cooler(cool_fname, neighbor_res=200, batch_size=1_000_000, eps=10, overwrite=False):
+def add_neighbor_factors_to_cooler(cool_fname, neighbor_res=200, batch_size=1_000_000, eps=10):
     """
     Add neighbor balanced weights to the cooler file for each resolution.
 
@@ -201,16 +201,13 @@ def add_neighbor_factors_to_cooler(cool_fname, neighbor_res=200, batch_size=1_00
     """
     WEIGHT_NEIGHBOR = 'weight_neighbor'
 
-    # Check if the cooler file already has a neighbor weight. if `overwrite`, remove it, otherwise raise an error.
+    # Remove any existing 'weight_neighbor' fields in the cooler file.
     for res_path in cooler.fileops.list_coolers(cool_fname):
         clr = cooler.Cooler(f'{cool_fname}::{res_path}')
         if WEIGHT_NEIGHBOR in clr.bins().keys():
-            if overwrite:
-                logging.info(f'Overwriting {WEIGHT_NEIGHBOR} in {res_path}.')
-                with clr.open("r+") as grp:
-                    del grp["bins"][WEIGHT_NEIGHBOR]
-            else:
-                raise ValueError(f'Cooler {res_path} already has a neighbor weight. Use --overwrite to overwrite.')
+            logging.info(f'Overwriting {WEIGHT_NEIGHBOR} in {res_path}.')
+            with clr.open("r+") as grp:
+                del grp["bins"][WEIGHT_NEIGHBOR]
 
     # Compute the neighbor factors for the neighbor resolution.
     clr = cooler.Cooler(f'{cool_fname}::/resolutions/{neighbor_res}')

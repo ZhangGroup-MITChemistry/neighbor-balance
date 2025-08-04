@@ -108,12 +108,11 @@ def remove_inward(full_cool, inward_cool, output_cool, k):
 @main.command()
 @click.argument('cool_fname')
 @click.option('--batch-size', default=1_000_000, help='Batch size to calculate the neighbors.')
-@click.option('--overwrite', is_flag=True, help='Overwrite the existing neighbor weights.')
-def neighbor_balance_cooler(cool_fname, batch_size, overwrite):
+def neighbor_balance_cooler(cool_fname, batch_size):
     """
     Add the inverse of the neighbors to the cooler.
     """
-    add_neighbor_factors_to_cooler(cool_fname, batch_size=batch_size, overwrite=overwrite)
+    add_neighbor_factors_to_cooler(cool_fname, batch_size=batch_size)
 
 
 @main.command()
