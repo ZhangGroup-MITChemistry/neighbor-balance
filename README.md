@@ -56,9 +56,40 @@ pytest
 
 While the actual neighbor balancing procedure is simple, we've found that there are several changes in
 the processing pipeline that are necessary to achieve good results. This unfortunately requires starting from a pairs
-or fastq file. The updated pipeline can be run through snakemake (see `Snakefile`). The commands are also written out
+or fastq file. The updated pipeline can be run through snakemake (see `Snakefile`). To use the snakemake pipeline, you
+must create a yaml formatted config file. The field `genome` is the code name for the genome build, `index` is the path
+to a bowtie2 index, and `chromsizes` is a tab-delimited file with columns for chromosome names and their sizes. The field
+`regions` should be used only for region capture datasets and should be a bed formatted file containing the broad regions
+covered by capture probes. The `sample` field defines the experimental conditions, replicates, and individual runs.
+Meaningful condition names should be substituted for `condition1`, `condition2`, etc. If the individual runs are SRA IDs,
+the pipeline can fetch them for you. Otherwise, they should be placed in a nested directory structure named, e.g.,
+`condition1/rep1/SRR1/SRR1_1.fastq` and `condition1/rep1/SRR1/SRR1_2.fastq`. The snakefile will produce neighbor balanced
+cooler files for each replicate and condition.
+
+```yaml
+samples:
+  condition1:
+    rep1:
+      - SRR1
+      - SRR2
+    rep2:
+      - SRR3
+  condition2:
+    rep1:
+      - SRR4
+    rep2:
+      - SRR5
+
+chromsizes: /path/to/chromsizes/mm39.chrom.sizes
+index: /path/to/index/mm39
+regions: /path/to/regions/captureregions.bed
+genome: mm39
+```
+
+Alternatively, the commands are also written out
 in `run_processing.sh`, if you prefer not to set up snakemake, but note that this "script" is more a list of commands
 that should be run individually.
+
 See the below section "Raw data to contact map" for details and justification of the changes.
 
 **Applying neighbor balancing to contact maps computed without these changes will result in incorrect results.**
