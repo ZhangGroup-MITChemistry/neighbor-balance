@@ -201,6 +201,17 @@ def add_neighbor_factors_to_cooler(cool_fname, neighbor_res=200, batch_size=1_00
     """
     WEIGHT_NEIGHBOR = 'weight_neighbor'
 
+    # Validate the inputs
+    if not 200 <= neighbor_res <= 400:
+        logging.critical('neighbor_res should be between 200 and 400. There may be cases where using other resolutions is'
+                        ' acceptable, but it is not recommended. You\'re on your own!')
+    resolutions = cooler.fileops.list_coolers(cool_fname)
+    resolutions = sorted([int(res.split('/')[-1]) for res in resolutions])
+    if not neighbor_res in resolutions:
+        raise ValueError(f'neighbor_res {neighbor_res} not found in the cooler file. Available resolutions: {resolutions}')
+    if not all(res % neighbor_res == 0 for res in resolutions):
+        raise ValueError(f'All resolutions in the cooler file must be multiples of {neighbor_res}. Found: {resolutions}')
+
     # Remove any existing 'weight_neighbor' fields in the cooler file.
     for res_path in cooler.fileops.list_coolers(cool_fname):
         clr = cooler.Cooler(f'{cool_fname}::{res_path}')

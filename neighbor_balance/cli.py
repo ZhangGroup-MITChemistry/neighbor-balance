@@ -107,12 +107,14 @@ def remove_inward(full_cool, inward_cool, output_cool, k):
 
 @main.command()
 @click.argument('cool_fname')
+@click.option('--neighbor-res', default=200, help='Resolution of the contact map used for computing neighbor weights.'
+              ' This should be between 200 and 400 bps. All other resolutions in the cooler should be multiples of this value.')
 @click.option('--batch-size', default=1_000_000, help='Batch size to calculate the neighbors.')
-def neighbor_balance_cooler(cool_fname, batch_size):
+def neighbor_balance_cooler(cool_fname, neighbor_res, batch_size):
     """
     Add the inverse of the neighbors to the cooler.
     """
-    add_neighbor_factors_to_cooler(cool_fname, batch_size=batch_size)
+    add_neighbor_factors_to_cooler(cool_fname, neighbor_res=neighbor_res, batch_size=batch_size)
 
 
 @main.command()
