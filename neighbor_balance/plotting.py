@@ -47,6 +47,118 @@ def apply_matplotlib_style():
     mpl.rcParams['savefig.bbox'] = 'tight'
 
 
+def fixed_panel_grid(
+    nrows,
+    ncols,
+    panel_width_in=3.0,
+    panel_height_in=3.0,
+    hspace_in=0.5,
+    vspace_in=0.5,
+    left_in=0.75,
+    right_in=0.25,
+    bottom_in=0.75,
+    top_in=0.5,
+):
+    """
+    Create a figure with nrows x ncols axes, each with a fixed physical size.
+
+    panel_width_in:
+        float or sequence of length ncols
+    panel_height_in:
+        float or sequence of length nrows
+    All spacing and margins are specified in inches.
+    """
+
+    # Normalize widths/heights to arrays
+    if np.isscalar(panel_width_in):
+        panel_widths = np.full(ncols, panel_width_in, dtype=float)
+    else:
+        panel_widths = np.asarray(panel_width_in, dtype=float)
+        if len(panel_widths) != ncols:
+            raise ValueError("panel_width_in must have length ncols")
+
+    if np.isscalar(panel_height_in):
+        panel_heights = np.full(nrows, panel_height_in, dtype=float)
+    else:
+        panel_heights = np.asarray(panel_height_in, dtype=float)
+        if len(panel_heights) != nrows:
+            raise ValueError("panel_height_in must have length nrows")
+
+    # Total figure size in inches
+    fig_width = (
+        left_in
+        + panel_widths.sum()
+        + hspace_in * (ncols - 1)
+        + right_in
+    )
+
+    fig_height = (
+        bottom_in
+        + panel_heights.sum()
+        + vspace_in * (nrows - 1)
+        + top_in
+    )
+
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    axes = np.empty((nrows, ncols), dtype=object)
+
+    # Precompute cumulative offsets
+    x_offsets = []
+    for c in range(ncols):
+        if c == 0:
+            x_offsets.append(left_in)
+        else:
+            x_offsets.append(x_offsets[-1] + panel_widths[c - 1] + hspace_in)
+    y_offsets = []
+    for r in range(nrows):
+        y_offsets.append(bottom_in + (nrows - r - 1)* vspace_in + panel_heights[r+1:].sum())
+
+    for r in range(nrows):
+        for c in range(ncols):
+            left = x_offsets[c] / fig_width
+            bottom = y_offsets[r] / fig_height
+            width = panel_widths[c] / fig_width
+            height = panel_heights[r] / fig_height
+
+            ax = fig.add_axes([left, bottom, width, height])
+            axes[r, c] = ax
+
+    return fig, axes
+
+
+def share_x_by_column(axes):
+    """
+    Share the x-axis among rows within each column.
+    axes: 2D array-like of Axes [nrows, ncols]
+    """
+    nrows, ncols = axes.shape
+
+    for c in range(ncols):
+        base = axes[0, c]
+        for r in range(1, nrows):
+            axes[r, c].sharex(base)
+
+        # Hide x tick labels on all but bottom row
+        for r in range(nrows - 1):
+            axes[r, c].tick_params(labelbottom=False)
+
+def share_y_by_row(axes):
+    """
+    Share the x-axis among rows within each column.
+    axes: 2D array-like of Axes [nrows, ncols]
+    """
+    nrows, ncols = axes.shape
+
+    for r in range(nrows):
+        base = axes[r, 0]
+        for c in range(1, ncols):
+            axes[r, c].sharey(base)
+
+        # Hide y tick labels on all but left column
+        for c in range(1, ncols):
+            axes[r, c].tick_params(labelleft=False)
+
+
 def stylize_gene_name(name):
     return fr"$\mathit{{{name.capitalize()}}}$"
 
@@ -235,6 +347,21 @@ class ContactMap:
         chrom, start, end = parse_region(region)
         return ContactMap(contact_map, chrom, start, end, resolution)
 
+    def coarsen(self, factor=5):
+        n = self.contact_map.shape[0]
+        new_n = n // factor
+
+        old = self.contact_map[:new_n * factor, :new_n * factor]
+
+        new = np.nansum(
+                old.reshape(new_n, factor, new_n, factor),
+                axis=(1, 3)
+            )
+        res = self.resolution * factor
+        end = self.start + new_n * res
+
+        return ContactMap(new, self.chrom, self.start, end, res)
+
     def x(self):
         return np.arange(self.start, self.end, self.resolution) + self.resolution / 2
 
@@ -309,7 +436,7 @@ class ContactMap:
     def select_region(self, start, end):
         assert (start - self.start) % self.resolution == 0
         assert (end - self.end) % self.resolution == 0
-        assert start >= self.start and end >= self.end
+        assert start >= self.start and end <= self.end
 
         start_i = (start - self.start) // self.resolution
         end_i = (end - self.start) // self.resolution
@@ -318,7 +445,7 @@ class ContactMap:
     def get_marginal(self, k=1, correct_for_flanks=False):
         return get_marginal(self.contact_map, k=k, correct_for_flanks=correct_for_flanks)
 
-    def compare(self, other, self_name=None, other_name=None, zoom_start=None, zoom_end=None, vmin=1e-3, vmax=1, bw=0, density_max=70):
+    def compare(self, other, self_name=None, other_name=None, zoom_start=None, zoom_end=None, vmin=1e-3, vmax=1, bw=0, density_max=70, diff_vmax=2):
         if (self_name is None) != (other_name is None):
             raise ValueError('Both contact maps must have names or neither can have names.')
         if not self.are_comparable(other):
@@ -367,7 +494,7 @@ class ContactMap:
         i = 6
         log_change = self.copy()
         log_change.contact_map = np.log2(self.contact_map / other.contact_map)
-        im = log_change.plot_contact_map(cmap='coolwarm', vmin=-2, vmax=2, colorbar=False, ax=ax[0, i], log_norm=False)
+        im = log_change.plot_contact_map(cmap='coolwarm', vmin=-diff_vmax, vmax=diff_vmax, colorbar=False, ax=ax[0, i], log_norm=False)
         plt.colorbar(im, cax=ax[0, i+1], orientation='vertical')
         ax[1, i].plot(other.x(), other.get_marginal(), c='gray')
         ax[1, i].plot(self.x(), self.get_marginal(), c='black')
@@ -380,7 +507,7 @@ class ContactMap:
         return f, ax
     
     def epigenetics_plot(self, tracks, depth=None, vmin=1e-4, smoothing=200, bin=True, show_map=True, ylims=None,
-                         contact_height=0.75, width=20, track_height=0.5, mean_density=None):
+                         contact_height=0.75, width=20, track_height=0.5, mean_density=None, show_peaks=True, name=None, color='black'):
         if depth is None:
             depth = (self.end - self.start) / 3
 
@@ -412,11 +539,12 @@ class ContactMap:
                 ax.set_ylim(*ylims[name])
                 
         marginal = self.get_marginal()
-        peaks, _ = find_peaks(gaussian_filter1d(-np.log2(marginal), 5), prominence=0.4)
-        print(peaks)
-        for peak in peaks:
-            for ax in axs:
-                ax.axvline(self.x()[peak], c='gray', lw=1, alpha=0.5)
+        if show_peaks:
+            peaks, _ = find_peaks(gaussian_filter1d(-np.log2(marginal), 5), prominence=0.4)
+            print(peaks)
+            for peak in peaks:
+                for ax in axs:
+                    ax.axvline(self.x()[peak], c='gray', lw=1, alpha=0.5)
 
         axs[0].set_xlim(self.start, self.end)
         format_ticks(axs[0], y=False)
@@ -425,7 +553,7 @@ class ContactMap:
             mean_density = np.nanmean(marginal)
         axs[0].axhline(mean_density, ls='--', c='grey')
         axs[0].set_yticks([mean_density])
-        axs[0].plot(self.x(), marginal, c='black')
+        axs[0].plot(self.x(), marginal, c=color, label=name)
         format_ylabel(axs[0], 'Contact\ndensity')
 
         for i, (name, track) in enumerate(tracks.items()):
@@ -462,3 +590,5 @@ class ContactMap:
 
         plot_ax.plot(self.x(), self.get_marginal(), c='black')
         plot_ax.tick_params(axis='x', rotation=20)
+
+        return image_ax, plot_ax

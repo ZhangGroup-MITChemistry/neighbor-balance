@@ -168,6 +168,31 @@ def mm39tomm10(fname):
     assert '"' not in cmds, "Double quotes are not allowed in the command string."
     print(f'sbatch -J {name} -o {name}.mm39tomm10.log --wrap="{cmds}"')
 
+@cli.command()
+@click.argument('fname')
+def dm3todm6(fname):
+    assert fname.endswith('.wig.gz')
+    name = fname[:-7]
+    cmds = []
+
+    cmds += [f'zcat {fname} | sed \'s/chrom=/chrom=chr/\' > {name}.chrom.wig']
+    cmds += [f'wigToBigWig {name}.chrom.wig ~/share/ucsc/dm3.chrom.sizes {name}.bw -clip']
+    cmds += [f'bigWigToBedGraph {name}.bw {name}.bg']
+    cmds += [f'liftOver {name}.bg dm3ToDm6.over.chain.gz {name}.dm6.bg unmap.bg']
+
+    cmds += [f'sort -k1,1 -k2,2n {name}.dm6.bg > {name}.dm6.sorted.bg']
+    cmds += [f'python {__file__} bedgraph-merge {name}.dm6.sorted.bg > {name}.dm6.sorted.merged.bg']
+    cmds += [f'bedGraphToBigWig {name}.dm6.sorted.merged.bg ~/share/ucsc/dm6.chrom.sizes {name}.dm6.final.bw']
+    cmds = ';'.join(cmds)
+    print(f'sbatch -J {name} -o {name}.dm3todm6.log --wrap="{cmds}"')
+
+    """
+    
+    liftOver GSM1535994_H3K4me3_NT_Rep2.bg dm3ToDm6.over.chain.gz GSM1535994_H3K4me3_NT_Rep2.dm6.bg unmap.bg
+    bedGraphToBigWig  GSM1535994_H3K4me3_NT_Rep2.dm6.bg ~/share/ucsc/dm6.chrom.sizes  GSM1535994_H3K4me3_NT_Rep2.dm6.bw
+    """
+
+
 
 if __name__ == "__main__":
     cli()
