@@ -332,8 +332,25 @@ class ContactMap:
         -------
         ContactMap
         """
-        print(f'{path}{cooler_internal_path}{resolution}')
-        clr = cooler.Cooler(f'{path}{cooler_internal_path}{resolution}')
+        # Support both multi-resolution `.mcool` files (Cooler URI with internal path)
+        # and single-resolution `.cool` files (no internal path).
+        #
+        # Historically, we assumed multi-res inputs and always opened:
+        #   f"{path}::/resolutions/{resolution}"
+        # but replicate-level data often lives in single-res `.cool` at 200 bp.
+        if '::' in path:
+            clr = cooler.Cooler(path)
+        else:
+            try:
+                clr = cooler.Cooler(f'{path}{cooler_internal_path}{resolution}')
+            except Exception:
+                # Fallback: treat as single-resolution cooler.
+                clr = cooler.Cooler(path)
+                if getattr(clr, "binsize", None) != resolution:
+                    raise ValueError(
+                        f"Requested resolution={resolution} but cooler binsize is {clr.binsize} for {path}. "
+                        f"Provide a multi-resolution .mcool or request the correct resolution."
+                    )
         contact_map = clr.matrix(balance=balance).fetch(region)
         if min_alpha > 0:
             logging.warning('Use of min_alpha is deprecated. Filter rows the right way.')

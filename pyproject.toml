@@ -30,3 +30,5 @@ dev = ["pytest"]
 [project.scripts]
 neighbor-balance = "neighbor_balance.cli:main"
 pairs_to_bed = "neighbor_balance.pairs_to_bed:main"
+pairs_to_bed_median = "neighbor_balance.pairs_to_bed_median:main"
+pairs_length_heatmap = "neighbor_balance.pairs_length_heatmap:main"

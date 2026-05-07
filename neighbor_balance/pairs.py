@@ -69,6 +69,40 @@ def shift_line(line, protected_over_2):
     return line
 
 
+def shift_line_median(line):
+    """
+    Shift positions to the median of each read's mapped 5' and 3' positions.
+
+    Expects columns: pos51, pos31 for read1 and pos52, pos32 for read2.
+    Falls back to leaving positions unchanged if required columns are missing
+    or marked as '.'.
+    """
+    # Helper to parse integer position or None
+    def _parse(value):
+        return None if value == '.' else int(value)
+
+    # Read 1
+    if 'pos51' in line and 'pos31' in line:
+        p51 = _parse(line['pos51'])
+        p31 = _parse(line['pos31'])
+        if p51 is not None and p31 is not None:
+            # Integer median of two values: floor of the average
+            line['pos1'] = (p51 + p31) // 2
+        elif line.get('pos1', '.') != '.':
+            line['pos1'] = int(line['pos1'])
+
+    # Read 2
+    if 'pos52' in line and 'pos32' in line:
+        p52 = _parse(line['pos52'])
+        p32 = _parse(line['pos32'])
+        if p52 is not None and p32 is not None:
+            line['pos2'] = (p52 + p32) // 2
+        elif line.get('pos2', '.') != '.':
+            line['pos2'] = int(line['pos2'])
+
+    return line
+
+
 def line_is_valid(line, chrom_sizes, *, regions=None, direction_to_keep=None, min_distance=0):
     chrom1 = line['chrom1']
     chrom2 = line['chrom2']

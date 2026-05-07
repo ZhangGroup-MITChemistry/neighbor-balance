@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 import numpy as np
 from intervaltree import IntervalTree, Interval
-from .pairs import PairsFile, shift_line, line_is_valid, remove_inward_reads_from_cooler, all_pairs_plots, get_base_ps
+from .pairs import PairsFile, shift_line, shift_line_median, line_is_valid, remove_inward_reads_from_cooler, all_pairs_plots, get_base_ps
 from .neighbor import add_neighbor_factors_to_cooler, normalize_contact_map_neighbor
 from .plotting import ContactMap, parse_region
 from .ice import ice_balance_with_interpolation, get_capture_rates
@@ -16,15 +16,22 @@ def main():
 
 
 @main.command()
-@click.option('--protected-over-2', default=65, help='Number of bases to protect around the nucleosome center.')
-def shift_pairs(protected_over_2):
+@click.option('--protected-over-2', default=65, help='Number of bases to protect around the nucleosome center (orientation mode).')
+@click.option('--mode', type=click.Choice(['orientation', 'median']), default='orientation', help='Shift algorithm to use.')
+def shift_pairs(protected_over_2, mode):
     """
-    Shift the positions by protected-over-2 in the 3' direction of the read.
+    Shift positions in a pairs file.
+
+    - orientation: shift by protected-over-2 along each read's orientation (existing behavior)
+    - median: set pos1/pos2 to the median of (pos51,pos31) and (pos52,pos32)
     """
     pf = PairsFile(sys.stdin)
     sys.stdout.write(''.join(pf.header))
     for line in pf:
-        line = shift_line(line, protected_over_2)
+        if mode == 'orientation':
+            line = shift_line(line, protected_over_2)
+        else:
+            line = shift_line_median(line)
         sys.stdout.write(pf.format_line(line) + '\n')
 
 
@@ -123,6 +130,10 @@ def neighbor_balance_cooler(cool_fname, neighbor_res, batch_size):
 @click.argument('region')
 @click.option('--resolution', default=200, help='Resolution of the contact map.')
 @click.option('--capture-probes-path', default=None, help='Path to the capture probes bed file.')
+@click.option('--compress/--no-compress', default=True, show_default=True,
+              help='Write a compressed .npz (recommended; drastically reduces disk usage for dense maps).')
+@click.option('--dtype', type=click.Choice(['float32', 'float64']), default='float32', show_default=True,
+              help='Floating dtype used when saving the balanced contact map.')
 @click.option('--mad-max', default=2, help='Minimum coverage in terms of medium absolute deviations.')
 @click.option('--min-nnz', default=100, help='Minimum number of non-zero values for the contact map.')
 @click.option('--min-pair-capture-rate', default=0.2, help='Minimum pair capture rate for each pixel.')
@@ -132,7 +143,7 @@ def neighbor_balance_cooler(cool_fname, neighbor_res, batch_size):
 @click.option('--sigma-scale', default=2.0, help='Scale for the smoothing function.')
 @click.option('--sigma-exponent', default=0.2, help='Exponent for the smoothing function.')
 @click.option('--sigma-plateau', default=2, help='Plateau for the smoothing function.')
-def region_balance(output_fname, cool_fname, region, resolution, capture_probes_path, **normalization_params):
+def region_balance(output_fname, cool_fname, region, resolution, capture_probes_path, compress, dtype, **normalization_params):
     """
     Balance individual regions of the contact map and save as a numpy file.
 
@@ -172,4 +183,10 @@ def region_balance(output_fname, cool_fname, region, resolution, capture_probes_
 
     # Balance and save.
     contacts = ice_balance_with_interpolation(contacts, capture_rates=capture_rates, **config['normalization_params'])
-    np.savez(output_fname, array=contacts, metadata=config)
+    if dtype == 'float32':
+        contacts = contacts.astype(np.float32, copy=False)
+    elif dtype != 'float64':
+        raise ValueError(f"Unsupported dtype: {dtype}")
+
+    save = np.savez_compressed if compress else np.savez
+    save(output_fname, array=contacts, metadata=config)
